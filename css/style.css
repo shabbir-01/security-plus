@@ -1,4 +1,4 @@
-﻿/* css/style.css
+/* css/style.css
    Global styles for hidden-reveal.
    Shared across index.html (encoder) and scan.html (decoder).
 */
@@ -183,6 +183,7 @@ header p.subtitle {
 #output-section {
   margin-top: 1.5rem;
   display: none; /* shown via JS after encode */
+  position: relative;
 }
 
 #output-section.visible { display: block; }
@@ -310,3 +311,68 @@ header p.subtitle {
 }
 
 #revealed-message.visible { display: block; }
+
+/* ── Phase 4: Reveal Overlay (Realtime Sync) ──────────────────────────────── */
+#reveal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+#reveal-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#reveal-overlay.hidden {
+  display: none !important;
+}
+
+.reveal-content {
+  background: #1e2024;
+  padding: 2rem;
+  border-radius: 12px;
+  border: 2px solid var(--accent);
+  text-align: center;
+  max-width: 80%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  transform: translateY(20px);
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+#reveal-overlay.visible .reveal-content {
+  transform: translateY(0);
+}
+
+.reveal-content h3 {
+  color: var(--accent);
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
+}
+
+.reveal-content p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+#reveal-text {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 2rem;
+  word-wrap: break-word;
+}

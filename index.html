@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -72,6 +72,16 @@
       </div>
 
       <div class="msg info" id="capacity-info" style="display:block; margin-top: 0.75rem;"></div>
+
+      <!-- Realtime Sync Reveal Overlay -->
+      <div id="reveal-overlay" class="hidden">
+        <div class="reveal-content">
+          <h3>🎉 Message Scanned!</h3>
+          <p>Someone decoded the secret message:</p>
+          <div id="reveal-text"></div>
+          <button class="btn btn-secondary" id="hide-reveal-btn">Dismiss</button>
+        </div>
+      </div>
     </section>
 
   </main>
@@ -88,6 +98,7 @@
      */
     import { encodeTextIntoImage } from './js/encoder.js';
     import { START_MARKER, END_MARKER, BLOCK_SIZE, textToBits, xorChecksum } from './js/stego-config.js';
+    import { listenForScans } from './js/firebase-config.js';
 
     // ── DOM refs ────────────────────────────────────────────────────────────
     const imageInput   = document.getElementById('image-input');
@@ -273,6 +284,27 @@
       clearMessages();
       outputSection.classList.remove('visible');
       updateEncodeButton();
+    });
+
+    // ── Realtime Sync (Firebase) ──────────────────────────────────────────────
+    const revealOverlay = document.getElementById('reveal-overlay');
+    const revealText = document.getElementById('reveal-text');
+    const hideRevealBtn = document.getElementById('hide-reveal-btn');
+    
+    let lastScanTimestamp = Date.now(); // Ignore old scans that happened before page load
+
+    listenForScans((message, timestamp) => {
+      // Only show if the scan happened after this page loaded
+      if (timestamp > lastScanTimestamp) {
+        revealText.textContent = message;
+        revealOverlay.classList.remove('hidden');
+        revealOverlay.classList.add('visible');
+      }
+    });
+
+    hideRevealBtn.addEventListener('click', () => {
+      revealOverlay.classList.remove('visible');
+      setTimeout(() => revealOverlay.classList.add('hidden'), 300); // Wait for transition
     });
   </script>
 

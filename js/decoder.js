@@ -8,6 +8,7 @@ import {
     bitsToText,
     xorChecksum
 } from './stego-config.js';
+import { pushScanResult } from './firebase-config.js';
 
 const GAP = 4;
 const targetBits = textToBits(START_MARKER);
@@ -273,7 +274,7 @@ function scanLoop(timestamp) {
 function onSuccess(message) {
     scanning = false;
     setStatus('success', 'Success!');
-    hintText.innerText = '';
+    hintText.innerText = 'Syncing to projector...';
     
     decodedTextDiv.innerText = message;
     successMessage.classList.remove('hidden');
@@ -282,6 +283,9 @@ function onSuccess(message) {
     if (navigator.vibrate) {
         navigator.vibrate([200, 100, 200]);
     }
+
+    // Push to Firebase so the desktop reveals the message
+    pushScanResult(message);
 }
 
 restartBtn.addEventListener('click', () => {
