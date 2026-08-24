@@ -1,4 +1,4 @@
-﻿import { BLOCK_SIZE, START_MARKER, END_MARKER, ANCHOR_SIZE, textToBits, bitsToText, xorChecksum } from "./stego-config.js";
+import { BLOCK_SIZE, START_MARKER, END_MARKER, ANCHOR_SIZE, textToBits, bitsToText, xorChecksum } from "./stego-config.js";
 
 const evalInput = document.getElementById("eval-input");
 const evalBtn = document.getElementById("eval-btn");
@@ -144,26 +144,34 @@ evalBtn.addEventListener("click", () => {
   const startIdx = fullText.indexOf(START_MARKER);
   const endIdx = fullText.indexOf(END_MARKER);
   
+  const debugText = `
+    <br><br><b>Debug Info:</b>
+    <br>b0 (0-bit ref): ${b0.toFixed(2)}
+    <br>b1 (1-bit ref): ${b1.toFixed(2)}
+    <br>Threshold: ${threshold.toFixed(2)}
+    <br>First 30 bits read: ${allBits.slice(0, 30).join('')}
+  `;
+
   if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
       const payloadAndChecksum = fullText.substring(startIdx + START_MARKER.length, endIdx);
       if (payloadAndChecksum.length >= 1) {
           const secretText = payloadAndChecksum.substring(0, payloadAndChecksum.length - 1);
           const checksumChar = payloadAndChecksum.charCodeAt(payloadAndChecksum.length - 1);
           if (xorChecksum(secretText) === checksumChar) {
-              showRes("success", `✅ Success! Decoded: "${secretText}"`);
+              showRes("success", `✅ Success! Decoded: "${secretText}"` + debugText);
               return;
           } else {
-              showRes("error", "❌ Checksum failed. Data was corrupted.");
+              showRes("error", "❌ Checksum failed. Data was corrupted." + debugText);
               return;
           }
       }
   }
   
-  showRes("error", "❌ Missing Markers. Could not find <<STEGO>> or <<END>>.");
+  showRes("error", "❌ Missing Markers. Could not find <<STEGO>> or <<END>>." + debugText);
 });
 
-function showRes(type, text) {
+function showRes(type, htmlStr) {
   evalResult.style.display = "block";
-  evalResult.textContent = text;
+  evalResult.innerHTML = htmlStr;
   evalResult.className = type === "success" ? "msg info" : "msg error";
 }
