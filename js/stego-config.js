@@ -20,10 +20,11 @@ export const BLOCK_SIZE = 20;
  * DELTA: Brightness offset (0–255) added to the R, G, and B channels of every
  * pixel in a "1" block. The decoder compares block brightness to a calibrated
  * threshold to distinguish 0-bits from 1-bits.
- * 20 is large enough to survive camera noise but small enough to be invisible
- * at normal viewing distance.
+ *
+ * 15 is a sweet spot: less visible than 20 to the human eye, but provides enough
+ * signal for the camera to pierce through screen glare and moiré patterns.
  */
-export const DELTA = 20;
+export const DELTA = 15;
 
 // ── Payload frame markers ────────────────────────────────────────────────────
 

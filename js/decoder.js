@@ -214,13 +214,16 @@ function scanFrame() {
                 const checksumChar = payloadAndChecksum.charCodeAt(payloadAndChecksum.length - 1);
                 
                 if (xorChecksum(secretText) === checksumChar) {
-                    return secretText;
+                    return secretText; // SUCCESS!
+                } else {
+                    return 'CHECKSUM_FAILED';
                 }
             }
         }
+        return 'MISSING_MARKERS';
     }
     
-    return false; // found anchors but failed to decode
+    return false; // found anchors but couldn't lock geometry
 }
 
 let lastProcessTime = 0;
@@ -245,7 +248,7 @@ function scanLoop(timestamp) {
         } else {
             lastAnchorTime = Date.now();
             
-            if (typeof result === 'string') {
+            if (typeof result === 'string' && result !== 'MISSING_MARKERS' && result !== 'CHECKSUM_FAILED') {
                 if (result === lastDecodedMessage) {
                     decodeAttempts++;
                 } else {
@@ -260,10 +263,17 @@ function scanLoop(timestamp) {
                     onSuccess(result);
                     return; // Stop loop
                 }
-            } else if (result === false) {
+            } else if (result === false || result === 'MISSING_MARKERS' || result === 'CHECKSUM_FAILED') {
                 decodeAttempts = 0;
                 setStatus('reading', 'Reading...');
-                hintText.innerText = 'Hold still...';
+                
+                if (result === 'CHECKSUM_FAILED') {
+                    hintText.innerText = 'Almost... checking for errors (Checksum Failed)';
+                } else if (result === 'MISSING_MARKERS') {
+                    hintText.innerText = 'Grid found, but data is corrupted (Missing Markers)';
+                } else {
+                    hintText.innerText = 'Hold still...';
+                }
             }
         }
     }
