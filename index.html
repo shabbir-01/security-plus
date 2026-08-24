@@ -1,0 +1,280 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hidden Reveal — Encoder</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <header>
+    <h1>Hidden Reveal</h1>
+    <p class="subtitle">Hide a secret message inside a photo using steganography</p>
+  </header>
+
+  <main class="card">
+
+    <!-- ── Step 1: Image upload ─────────────────────────────────────────── -->
+    <div class="field">
+      <label for="image-input">1 · Base image (PNG or JPG)</label>
+      <input
+        type="file"
+        id="image-input"
+        accept="image/png,image/jpeg"
+        aria-describedby="image-hint"
+      />
+      <span class="char-count" id="image-hint">
+        Larger images support longer messages. Min recommended: 400 × 400 px.
+      </span>
+    </div>
+
+    <!-- ── Step 2: Secret message ───────────────────────────────────────── -->
+    <div class="field">
+      <label for="message-input">2 · Secret message</label>
+      <textarea
+        id="message-input"
+        rows="3"
+        maxlength="500"
+        placeholder="Type your hidden message here…"
+        aria-describedby="char-counter"
+      ></textarea>
+      <span class="char-count" id="char-counter">0 / 500 chars typed</span>
+    </div>
+
+    <!-- ── Step 3: Encode button ────────────────────────────────────────── -->
+    <button class="btn btn-primary" id="encode-btn" disabled>
+      ✦ Encode
+    </button>
+
+    <!-- Inline error / info feedback -->
+    <div class="msg error" id="error-msg" role="alert" aria-live="polite"></div>
+    <div class="msg info"  id="info-msg"  aria-live="polite"></div>
+
+    <!-- ── Step 4: Output ───────────────────────────────────────────────── -->
+    <section id="output-section" aria-label="Encoded image output">
+      <h2>Encoded image — ready to project</h2>
+
+      <!--
+        We display a <canvas> directly (not an <img>) so we can call
+        canvas.toBlob('image/png') for a lossless PNG download.
+        JPEG must never be used here — lossy compression destroys the encoding.
+      -->
+      <canvas id="preview-canvas"></canvas>
+
+      <div class="output-actions">
+        <button class="btn btn-primary" id="download-btn">
+          ↓ Download PNG
+        </button>
+        <button class="btn btn-secondary" id="reset-btn">
+          ↺ Start over
+        </button>
+      </div>
+
+      <div class="msg info" id="capacity-info" style="display:block; margin-top: 0.75rem;"></div>
+    </section>
+
+  </main>
+
+  <nav class="page-nav">
+    <a href="scan.html">→ Open camera scanner (scan.html)</a>
+  </nav>
+
+  <script type="module">
+    /**
+     * index.html inline module
+     * Wires the UI to the encoder and handles all user interactions.
+     * Kept as a module so it can use ES import to load encoder.js.
+     */
+    import { encodeTextIntoImage } from './js/encoder.js';
+    import { START_MARKER, END_MARKER, BLOCK_SIZE, textToBits, xorChecksum } from './js/stego-config.js';
+
+    // ── DOM refs ────────────────────────────────────────────────────────────
+    const imageInput   = document.getElementById('image-input');
+    const messageInput = document.getElementById('message-input');
+    const charCounter  = document.getElementById('char-counter');
+    const encodeBtn    = document.getElementById('encode-btn');
+    const errorMsg     = document.getElementById('error-msg');
+    const infoMsg      = document.getElementById('info-msg');
+    const outputSection = document.getElementById('output-section');
+    const previewCanvas = document.getElementById('preview-canvas');
+    const downloadBtn  = document.getElementById('download-btn');
+    const resetBtn     = document.getElementById('reset-btn');
+    const capacityInfo = document.getElementById('capacity-info');
+
+    // ── State ───────────────────────────────────────────────────────────────
+    let loadedImage = null;  // HTMLImageElement once the user picks a file
+    let encodedCanvas = null; // result canvas after encoding
+
+    // ── Helper: show / hide inline messages ─────────────────────────────────
+    function showError(text) {
+      errorMsg.textContent = text;
+      errorMsg.classList.add('visible');
+      infoMsg.classList.remove('visible');
+    }
+
+    function showInfo(text) {
+      infoMsg.textContent = text;
+      infoMsg.classList.add('visible');
+      errorMsg.classList.remove('visible');
+    }
+
+    function clearMessages() {
+      errorMsg.classList.remove('visible');
+      infoMsg.classList.remove('visible');
+    }
+
+    // ── Helper: compute message capacity for an image size ──────────────────
+    function computeCapacity(imgW, imgH) {
+      const ANCHOR_SIZE = 16;
+      const border = ANCHOR_SIZE + BLOCK_SIZE;
+      const maxBlocksX = Math.floor((imgW - 2 * border) / BLOCK_SIZE);
+      const maxBlocksY = Math.floor((imgH - 2 * border) / BLOCK_SIZE);
+      if (maxBlocksX < 1 || maxBlocksY < 1) return 0;
+      const totalBlocks = maxBlocksX * maxBlocksY;
+      // Each block holds 1 bit; 8 bits per char; minus overhead for markers + checksum
+      const overhead = START_MARKER.length + END_MARKER.length + 1; // 1 byte checksum
+      return Math.max(0, Math.floor(totalBlocks / 8) - overhead);
+    }
+
+    // ── Image load ───────────────────────────────────────────────────────────
+    imageInput.addEventListener('change', () => {
+      const file = imageInput.files[0];
+      if (!file) return;
+
+      clearMessages();
+      outputSection.classList.remove('visible');
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          loadedImage = img;
+          updateEncodeButton();
+
+          // Show capacity hint
+          const MAX_LONG = 1600;
+          const long = Math.max(img.naturalWidth, img.naturalHeight);
+          let dispW = img.naturalWidth;
+          let dispH = img.naturalHeight;
+          if (long > MAX_LONG) {
+            const s = MAX_LONG / long;
+            dispW = Math.round(dispW * s);
+            dispH = Math.round(dispH * s);
+          }
+          const cap = computeCapacity(dispW, dispH);
+          showInfo(`Image loaded (${img.naturalWidth}×${img.naturalHeight}px). Payload capacity: ~${cap} characters.`);
+        };
+        img.onerror = () => showError('Could not load the selected image. Please try a different file.');
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // ── Character counter ────────────────────────────────────────────────────
+    messageInput.addEventListener('input', () => {
+      const len = messageInput.value.length;
+      charCounter.textContent = `${len} / 500 chars typed`;
+      charCounter.classList.toggle('warn', len > 400);
+      updateEncodeButton();
+    });
+
+    // ── Enable Encode button only when both inputs are present ───────────────
+    function updateEncodeButton() {
+      encodeBtn.disabled = !(loadedImage && messageInput.value.trim().length > 0);
+    }
+
+    // ── Encode ───────────────────────────────────────────────────────────────
+    encodeBtn.addEventListener('click', () => {
+      clearMessages();
+      outputSection.classList.remove('visible');
+
+      const secretText = messageInput.value.trim();
+
+      // Validation: empty message
+      if (!secretText) {
+        showError('Please type a secret message before encoding.');
+        return;
+      }
+
+      // Validation: no image
+      if (!loadedImage) {
+        showError('Please select a base image first.');
+        return;
+      }
+
+      encodeBtn.disabled = true;
+      encodeBtn.textContent = 'Encoding…';
+
+      // Run encoding (synchronous canvas operations — use setTimeout so the
+      // browser can repaint the button state before the heavy work begins)
+      setTimeout(() => {
+        const { canvas, error } = encodeTextIntoImage(loadedImage, secretText);
+
+        encodeBtn.disabled = false;
+        encodeBtn.textContent = '✦ Encode';
+
+        if (error) {
+          showError(error);
+          return;
+        }
+
+        // ── Show result ──────────────────────────────────────────────────────
+        encodedCanvas = canvas;
+
+        // Copy encoded canvas onto the visible preview canvas (different element
+        // because we want the preview to be CSS-responsive while the offscreen
+        // canvas keeps the true pixel resolution for the download)
+        previewCanvas.width  = canvas.width;
+        previewCanvas.height = canvas.height;
+        previewCanvas.getContext('2d').drawImage(canvas, 0, 0);
+
+        // Show payload capacity used
+        const checksum = xorChecksum(secretText);
+        const fullPayload = START_MARKER + secretText + String.fromCharCode(checksum) + END_MARKER;
+        const bitsUsed = textToBits(fullPayload).length;
+        const blocksUsed = bitsUsed; // 1 block per bit
+        capacityInfo.textContent =
+          `Encoded ${secretText.length} char message · ${bitsUsed} bits · ${blocksUsed} blocks used.`;
+
+        outputSection.classList.add('visible');
+        outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    });
+
+    // ── Download PNG ─────────────────────────────────────────────────────────
+    downloadBtn.addEventListener('click', () => {
+      if (!encodedCanvas) return;
+
+      // Use toBlob with explicit image/png MIME type — never JPEG.
+      // JPEG's lossy compression would destroy the steganographic encoding.
+      encodedCanvas.toBlob((blob) => {
+        if (!blob) {
+          showError('Could not generate PNG download. Please try again.');
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'hidden-reveal-encoded.png';
+        a.click();
+        // Clean up the object URL after a short delay
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }, 'image/png'); // ← explicit PNG — critical
+    });
+
+    // ── Reset / start over ───────────────────────────────────────────────────
+    resetBtn.addEventListener('click', () => {
+      imageInput.value = '';
+      messageInput.value = '';
+      charCounter.textContent = '0 / 500 chars typed';
+      loadedImage = null;
+      encodedCanvas = null;
+      clearMessages();
+      outputSection.classList.remove('visible');
+      updateEncodeButton();
+    });
+  </script>
+
+</body>
+</html>
